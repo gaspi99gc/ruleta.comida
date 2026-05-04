@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Ruleta de Recetas · Mobile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{min-height:100vh;font-family:'Nunito',sans-serif;background:#0e0704;}
+#root{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+@keyframes bulb{0%,100%{opacity:1;box-shadow:0 0 7px 3px #ffe566,0 0 18px 5px #ffaa00;}50%{opacity:.4;box-shadow:0 0 3px 1px #ffe566;}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(50px)}to{opacity:1;transform:translateY(0)}}
+@keyframes popIn{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
+@keyframes spinA{to{transform:rotate(360deg)}}
+@keyframes ctaShine{0%,100%{box-shadow:0 4px 22px rgba(245,200,66,.4)}50%{box-shadow:0 4px 38px rgba(245,200,66,.7)}}
+@keyframes confettiFall{0%{transform:translateY(-10px) rotate(0deg);opacity:1}100%{transform:translateY(340px) rotate(720deg);opacity:0}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+const RECIPES=[
+  "Milanesas de carne","Pasta cremosa","Tacos de pollo","Bowl asiático",
+  "Sopa de lentejas","Wok de verduras","Sándwich gourmet","Ensalada fresca",
+  "Salmón al horno","Pollo al curry","Ceviche de camarón","Buddha bowl",
+];
+
+const SLICE_COLORS=[
+  "#e8503a","#f5c842","#4cbe7d","#5b9cf6",
+  "#c86dd7","#f5923a","#e8503a","#4cbe7d",
+  "#f5c842","#5b9cf6","#c86dd7","#f5923a",
+];
+const SLICE_EMOJIS=["🥩","🍝","🌮","🥣","🍲","🥘","🥪","🥗","🐟","🍛","🦐","🧆"];
+
+/* ── confetti ── */
+function Confetti({active}){
+  const pieces=useMemo(()=>Array.from({length:20},(_,i)=>({
+    id:i,x:10+Math.random()*80,delay:Math.random()*1,dur:1.8+Math.random()*1,
+    color:["#e8503a","#f5c842","#4cbe7d","#5b9cf6","#c86dd7","#f5923a"][i%6],
+    size:4+Math.random()*5,shape:Math.random()>.5?"circle":"rect",
+  })),[]);
+  if(!active)return null;
+  return(
+    <div style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"hidden",zIndex:20}}>
+      {pieces.map(p=>(
+        <div key={p.id} style={{
+          position:"absolute",left:`${p.x}%`,top:"-8px",
+          width:p.shape==="circle"?p.size:p.size*1.4,height:p.size,
+          borderRadius:p.shape==="circle"?"50%":"2px",background:p.color,
+          animation:`confettiFall ${p.dur}s ${p.delay}s ease-in forwards`,
+        }}/>
+      ))}
+    </div>
+  );
+}
+
+/* ── bulb ring ── */
+function BulbRing({r,count=22}){
+  return(
+    <div style={{position:"absolute",inset:0,pointerEvents:"none"}}>
+      {Array.from({length:count},(_,i)=>{
+        const a=(i/count)*2*Math.PI-Math.PI/2,d=(i%3)*.35;
+        return(
+          <div key={i} style={{
+            position:"absolute",width:10,height:10,borderRadius:"50%",background:"#ffe566",
+            left:`calc(50% + ${r*Math.cos(a)}px - 5px)`,
+            top:`calc(50% + ${r*Math.sin(a)}px - 5px)`,
+            animation:`bulb 1.5s ${d}s ease-in-out infinite`,
+          }}/>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── wheel ── */
+function Wheel({recipes,spinAngle,onSpin,spinning,winner,size=290}){
+  const cvRef=useRef(null);
+  const n=Math.max(recipes.length,1),arc=(2*Math.PI)/n;
+  const cx=size/2,cy=size/2;
+
+  useEffect(()=>{
+    const cv=cvRef.current;if(!cv)return;
+    const ctx=cv.getContext("2d");
+    ctx.clearRect(0,0,size,size);
+    const r=size/2-2;
+
+    recipes.forEach((name,i)=>{
+      const s=spinAngle+i*arc-Math.PI/2,e=s+arc;
+      const isW=winner===name;
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,s,e);ctx.closePath();
+      ctx.fillStyle=SLICE_COLORS[i%SLICE_COLORS.length];ctx.fill();
+      if(isW){ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,s,e);ctx.closePath();ctx.fillStyle="rgba(255,255,255,0.22)";ctx.fill();}
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+r*Math.cos(s),cy+r*Math.sin(s));
+      ctx.strokeStyle="rgba(0,0,0,0.3)";ctx.lineWidth=1.5;ctx.stroke();
+
+      // emoji
+      ctx.save();
+      const mid=s+arc/2,eR=r*0.72;
+      ctx.font=`${Math.max(12,Math.min(20,340/n))}px serif`;
+      ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText(SLICE_EMOJIS[i%SLICE_EMOJIS.length],cx+eR*Math.cos(mid),cy+eR*Math.sin(mid));
+      ctx.restore();
+
+      // text
+      ctx.save();
+      const tI=26,tO=r*0.56,tM=(tI+tO)/2;
+      ctx.translate(cx+tM*Math.cos(mid),cy+tM*Math.sin(mid));ctx.rotate(mid);
+      const fs=Math.max(8,Math.min(11,240/n));
+      ctx.font=`800 ${fs}px 'Nunito',sans-serif`;
+      ctx.fillStyle="#fff";ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.shadowColor="rgba(0,0,0,0.5)";ctx.shadowBlur=3;
+      const maxW=tO-tI-4;let label=name;
+      while(label.length>3&&ctx.measureText(label).width>maxW)label=label.slice(0,-2)+"…";
+      ctx.fillText(label,0,0);ctx.restore();
+    });
+
+    // dark border
+    ctx.beginPath();ctx.arc(cx,cy,r+1,0,2*Math.PI);
+    ctx.strokeStyle="#0e0704";ctx.lineWidth=16;ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,r+8,0,2*Math.PI);
+    ctx.strokeStyle="#2e1608";ctx.lineWidth=6;ctx.stroke();
+
+    // hub
+    const hR=40;
+    const g=ctx.createRadialGradient(cx,cy,0,cx,cy,hR);
+    g.addColorStop(0,"#241008");g.addColorStop(1,"#140804");
+    ctx.beginPath();ctx.arc(cx,cy,hR,0,2*Math.PI);
+    ctx.fillStyle=g;ctx.shadowColor="rgba(0,0,0,.6)";ctx.shadowBlur=16;ctx.fill();
+    ctx.shadowBlur=0;ctx.strokeStyle="rgba(255,255,255,0.12)";ctx.lineWidth=1.5;ctx.stroke();
+    ctx.save();
+    ctx.font=`900 10px 'Nunito',sans-serif`;ctx.fillStyle="#f5c842";
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText("¡GIRÁ Y",cx,cy-7);ctx.fillText("COCINÁ!",cx,cy+7);
+    ctx.restore();
+  },[recipes,spinAngle,winner,size]);
+
+  return(
+    <canvas ref={cvRef} width={size} height={size} onClick={onSpin}
+      style={{display:"block",borderRadius:"50%",cursor:spinning?"not-allowed":"pointer"}}/>
+  );
+}
+
+/* ── inline recipe ── */
+function InlineRecipe({dish,isDefault=false}){
+  const [recipe,setRecipe]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState(false);
+  const [tab,setTab]=useState("ing");
+
+  useEffect(()=>{
+    setLoading(true);setError(false);setRecipe(null);setTab("ing");
+    (async()=>{
+      try{
+        const p=`Genera una receta saludable y deliciosa en español para: "${dish}".
+Responde ÚNICAMENTE con JSON válido:
+{"nombre":"…","descripcion":"…","tiempo":"…","porciones":"…","dificultad":"Fácil/Media/Difícil","calorias":"…","tip":"consejo corto","emplatado":["idea 1","idea 2"],"ingredientes":["…"],"pasos":["…"]}
+Máximo 7 ingredientes, 5 pasos.`;
+        const t=await window.claude.complete(p);
+        const m=t.match(/\{[\s\S]*\}/);if(!m)throw new Error();
+        setRecipe(JSON.parse(m[0]));
+      }catch{setError(true);}
+      finally{setLoading(false);}
+    })();
+  },[dish]);
+
+  return(
+    <div style={{
+      margin:"0 14px",
+      background:"linear-gradient(145deg,#241208,#1a0d06)",
+      border:"1.5px solid rgba(245,200,66,0.2)",borderRadius:18,
+      overflow:"hidden",animation:"fadeUp .4s ease",
+      boxShadow:"0 4px 24px rgba(0,0,0,.4)",
+    }}>
+      {loading&&(
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"18px"}}>
+          <div style={{width:22,height:22,borderRadius:"50%",border:"2.5px solid rgba(255,255,255,.1)",borderTopColor:"#f5c842",animation:"spinA .8s linear infinite",flexShrink:0}}/>
+          <p style={{color:"rgba(255,255,255,.4)",fontSize:12}}>Preparando tu receta…</p>
+        </div>
+      )}
+      {error&&!loading&&<p style={{color:"#e8503a",textAlign:"center",padding:"16px",fontSize:12}}>Ups, algo salió mal 🍳</p>}
+      {recipe&&!loading&&(
+        <div>
+          {/* header */}
+          <div style={{padding:"12px 14px 8px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:6}}>
+              <h3 style={{fontFamily:"'Fredoka One',cursive",fontSize:16,color:"#fff",lineHeight:1.2}}>{recipe.nombre}</h3>
+              <span style={{
+                background:isDefault?"rgba(76,190,125,0.15)":"rgba(245,200,66,0.15)",
+                color:isDefault?"#4cbe7d":"#f5c842",
+                fontSize:9,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",
+                padding:"3px 8px",borderRadius:99,flexShrink:0,marginTop:2,
+              }}>{isDefault?"Sugerencia":"Receta del día"}</span>
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {[{v:recipe.tiempo,e:"⏱"},{v:recipe.porciones,e:"👤"},{v:recipe.dificultad,e:"⭐"},{v:recipe.calorias,e:"🔥"}]
+                .filter(m=>m.v).map((m,i)=>(
+                <span key={i} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"3px 8px",fontSize:10,display:"flex",alignItems:"center",gap:4,color:"#e8d5a0",fontWeight:600}}>
+                  {m.e} {m.v}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* tabs */}
+          <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+            {[{id:"ing",l:"Ingredientes"},{id:"steps",l:"Preparación"},{id:"emplatado",l:"Emplatado"},{id:"tip",l:"Tip"}].map(t=>(
+              <button key={t.id} onClick={()=>setTab(t.id)} style={{
+                flex:1,padding:"8px 2px",background:"none",border:"none",
+                borderBottom:`2px solid ${tab===t.id?"#f5c842":"transparent"}`,
+                color:tab===t.id?"#f5c842":"rgba(255,255,255,.35)",
+                fontSize:10,fontWeight:700,fontFamily:"inherit",cursor:"pointer",
+                transition:"all .2s",marginBottom:-1,
+              }}>{t.l}</button>
+            ))}
+          </div>
+
+          {/* content */}
+          <div style={{padding:"10px 14px 12px",maxHeight:150,overflowY:"auto"}}>
+            {tab==="ing"&&(
+              <ul style={{listStyle:"none",display:"flex",flexDirection:"column",gap:6}}>
+                {recipe.ingredientes?.map((ing,i)=>(
+                  <li key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:11,color:"#c8a870",lineHeight:1.5}}>
+                    <span style={{width:5,height:5,borderRadius:"50%",background:"#f5c842",marginTop:4,flexShrink:0}}/>
+                    {ing}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {tab==="steps"&&(
+              <ol style={{listStyle:"none",display:"flex",flexDirection:"column",gap:9}}>
+                {recipe.pasos?.map((paso,i)=>(
+                  <li key={i} style={{display:"flex",gap:8,fontSize:11,lineHeight:1.6,color:"#c8a870"}}>
+                    <span style={{minWidth:20,height:20,borderRadius:"50%",background:"#f5c842",color:"#1a0d05",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,flexShrink:0,marginTop:1}}>{i+1}</span>
+                    {paso}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {tab==="emplatado"&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {recipe.emplatado?.map((idea,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,background:"rgba(76,190,125,0.08)",border:"1px solid rgba(76,190,125,0.18)",borderRadius:8,padding:"8px 10px"}}>
+                    <span style={{minWidth:20,height:20,borderRadius:"50%",background:"rgba(76,190,125,0.2)",color:"#4cbe7d",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,flexShrink:0}}>{i+1}</span>
+                    <p style={{fontSize:11,color:"#c8a870",lineHeight:1.5}}>{idea}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {tab==="tip"&&recipe.tip&&(
+              <div style={{background:"rgba(245,200,66,0.08)",border:"1px solid rgba(245,200,66,0.18)",borderRadius:8,padding:"10px"}}>
+                <div style={{fontSize:9,fontWeight:800,color:"#f5c842",letterSpacing:"0.08em",marginBottom:6}}>💡 CONSEJO</div>
+                <p style={{fontSize:11,color:"#c8a870",lineHeight:1.6,fontStyle:"italic"}}>{recipe.tip}</p>
+              </div>
+            )}
+          </div>
+
+          {/* share */}
+          <div style={{padding:"8px 14px 12px",borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:8}}>
+            <button style={{flex:1,background:"#f5c842",color:"#1a0d05",border:"none",borderRadius:10,padding:"10px",fontSize:12,fontWeight:800,fontFamily:"inherit",cursor:"pointer"}}>📤 Compartir</button>
+            <button style={{width:38,height:38,borderRadius:10,background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>♡</button>
+            <button style={{width:38,height:38,borderRadius:10,background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>🔖</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── App Screen ── */
+function AppScreen(){
+  const [recipes]=useState(RECIPES);
+  const [spinAngle,setSpinAngle]=useState(0);
+  const [spinning,setSpinning]=useState(false);
+  const [winner,setWinner]=useState(null);
+  const [showCard,setShowCard]=useState(false);
+  const [confetti,setConfetti]=useState(false);
+  const [spins,setSpins]=useState(0);
+  const animRef=useRef(null),angleRef=useRef(0);
+
+  const spin=useCallback(()=>{
+    if(spinning)return;
+    setWinner(null);setShowCard(false);setConfetti(false);setSpinning(true);
+    const n=recipes.length,arc=(2*Math.PI)/n,idx=Math.floor(Math.random()*n);
+    const total=(Math.PI*2*(8+Math.random()*5))-(angleRef.current%(Math.PI*2))-(idx*arc)+Math.PI*1.5;
+    const target=angleRef.current+total,dur=3800+Math.random()*1400;
+    const t0=performance.now(),a0=angleRef.current,ease=t=>1-Math.pow(1-t,4);
+    const frame=now=>{
+      const t=Math.min((now-t0)/dur,1),c=a0+(target-a0)*ease(t);
+      angleRef.current=c;setSpinAngle(c);
+      if(t<1)animRef.current=requestAnimationFrame(frame);
+      else{
+        setSpinning(false);setWinner(recipes[idx]);setConfetti(true);
+        setSpins(s=>s+1);setTimeout(()=>setShowCard(true),700);
+        setTimeout(()=>setConfetti(false),2600);
+      }
+    };
+    animRef.current=requestAnimationFrame(frame);
+  },[spinning,recipes]);
+
+  const WSIZ=282,RR=WSIZ/2+16;
+
+  return(
+    <div style={{
+      width:"100%",height:"100%",
+      background:"radial-gradient(ellipse at 50% 30%,#2e1608 0%,#120804 55%,#080402 100%)",
+      display:"flex",flexDirection:"column",
+      position:"relative",overflow:"hidden",
+    }}>
+      <Confetti active={confetti}/>
+
+      {/* ambient blobs */}
+      <div style={{position:"absolute",top:"-5%",right:"-5%",width:180,height:160,borderRadius:"50%",background:"radial-gradient(circle,rgba(232,80,58,0.1),transparent 70%)",pointerEvents:"none"}}/>
+      <div style={{position:"absolute",top:"30%",left:"-10%",width:150,height:140,borderRadius:"50%",background:"radial-gradient(circle,rgba(76,190,125,0.08),transparent 70%)",pointerEvents:"none"}}/>
+
+      {/* ── HEADER ── */}
+      <div style={{padding:"56px 18px 6px",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:22,animation:"float 3s ease-in-out infinite"}}>🍳</span>
+          <div>
+            <div style={{fontFamily:"'Fredoka One',cursive",fontSize:20,color:"#f5c842",lineHeight:1}}>Ruleta</div>
+            <div style={{fontFamily:"'Fredoka One',cursive",fontSize:11,color:"rgba(255,255,255,.7)",lineHeight:1}}>de recetas</div>
+          </div>
+        </div>
+        {spins>0&&(
+          <div style={{background:"rgba(245,200,66,0.1)",border:"1px solid rgba(245,200,66,0.2)",borderRadius:10,padding:"5px 12px",textAlign:"center"}}>
+            <div style={{fontFamily:"'Fredoka One',cursive",fontSize:18,color:"#f5c842",lineHeight:1}}>{spins}</div>
+            <div style={{fontSize:9,color:"rgba(255,255,255,.35)",letterSpacing:"0.06em"}}>GIROS</div>
+          </div>
+        )}
+      </div>
+
+      {/* ── WHEEL ── */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",paddingTop:6,flexShrink:0}}>
+        <div style={{position:"relative",width:WSIZ+62,height:WSIZ+62,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {/* dark ring */}
+          <div style={{position:"absolute",inset:0,borderRadius:"50%",
+            background:"radial-gradient(circle, transparent 46%, #0e0704 47%, #0e0704 55%, #2e1608 56%, #2e1608 62%, transparent 63%)",
+            zIndex:2,pointerEvents:"none"}}/>
+          <div style={{position:"absolute",inset:0,zIndex:3}}>
+            <BulbRing r={RR+4} count={24}/>
+          </div>
+          {/* pointer */}
+          <div style={{position:"absolute",top:1,left:"50%",transform:"translateX(-50%)",zIndex:10}}>
+            <svg width="24" height="36" viewBox="0 0 30 44" fill="none">
+              <path d="M15 44 L1 13 Q15 1 29 13 Z" fill="#f5c842"/>
+              <circle cx="15" cy="13" r="7" fill="#0e0704" stroke="#f5c842" strokeWidth="2"/>
+              <circle cx="15" cy="13" r="3.5" fill="#f5c842"/>
+            </svg>
+          </div>
+          <div style={{position:"relative",zIndex:1,borderRadius:"50%",boxShadow:"0 8px 36px rgba(0,0,0,.7), 0 0 0 4px #0e0704, 0 0 0 7px #2e1608"}}>
+            <Wheel recipes={recipes} spinAngle={spinAngle} onSpin={spin} spinning={spinning} winner={winner} size={WSIZ}/>
+          </div>
+        </div>
+      </div>
+
+      {/* ── CTA ── */}
+      <div style={{padding:"6px 16px 8px",flexShrink:0}}>
+        {!winner?(
+          <button onClick={spin} disabled={spinning} style={{
+            width:"100%",background:"#f5c842",color:"#1a0d05",border:"none",
+            borderRadius:16,padding:"14px",fontSize:14,fontWeight:900,
+            fontFamily:"inherit",letterSpacing:"0.05em",textTransform:"uppercase",
+            cursor:spinning?"not-allowed":"pointer",opacity:spinning?.7:1,
+            animation:!spinning?"ctaShine 2.5s ease-in-out infinite":"none",
+            transition:"transform .15s",
+          }}
+          onMouseEnter={e=>{if(!spinning)e.currentTarget.style.transform="scale(1.01)";}}
+          onMouseLeave={e=>{e.currentTarget.style.transform="none";}}
+          >{spinning?"Girando…":"✦  GIRAR LA RULETA"}</button>
+        ):(
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={spin} style={{
+              flex:1,background:"rgba(255,255,255,0.07)",color:"rgba(255,255,255,.8)",
+              border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:14,padding:"11px",
+              fontSize:12,fontWeight:800,fontFamily:"inherit",cursor:"pointer",
+            }}>↺ Otra vez</button>
+            <div style={{
+              flex:2,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+              background:"rgba(245,200,66,0.1)",border:"1.5px solid rgba(245,200,66,0.25)",
+              borderRadius:14,padding:"6px 10px",
+            }}>
+              <p style={{fontSize:9,fontWeight:800,color:"#f5c842",letterSpacing:".1em",textTransform:"uppercase",marginBottom:1}}>¡Tocó cocinar!</p>
+              <p style={{fontFamily:"'Fredoka One',cursive",fontSize:13,color:"#fff",textAlign:"center",lineHeight:1.2}}>{winner}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── RECIPE ── */}
+      <div style={{flex:1,overflowY:"auto",paddingBottom:14}}>
+        <InlineRecipe dish={winner||recipes[0]} isDefault={!winner}/>
+      </div>
+    </div>
+  );
+}
+
+/* ── root ── */
+function Root(){
+  return(
+    <IOSDevice statusBarDark={false}>
+      <AppScreen/>
+    </IOSDevice>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Root/>);
+</script>
+</body>
+</html>
